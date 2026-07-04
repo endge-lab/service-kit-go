@@ -7,8 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"gitlab.com/me-group5892332/me-project.git/pkg/migrator"
-
+	"github.com/endge-lab/service-kit-go/pkg/migrator"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -137,7 +136,7 @@ func NewPostgresClient(
 		},
 	})
 
-	if o.runMigration {
+	if o.runMigration || conf.GetMigrationsEnabled() {
 		if err = migration(pool, logger, o.fs); err != nil {
 			_, err = pool.Exec(context.Background(), fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", conf.GetSchema()))
 			if err != nil {

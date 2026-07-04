@@ -14,4 +14,5 @@ type Config interface {
 	GetMinConnLifeTime() time.Duration
 	GetMaxConnIdleTime() time.Duration
 	GetSchema() string
+	GetMigrationsEnabled() bool
 }

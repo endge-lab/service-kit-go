@@ -32,6 +32,7 @@ func setServiceDefaults(v *viper.Viper, appEnv string) {
 		"postgres.max_conn":           100,
 		"postgres.max_conn_lifetime":  "25m",
 		"postgres.max_conn_idle_time": "5m",
+		"postgres.migrations_enabled": false,
 		"auth.enabled":                false,
 		"auth.service_url":            "",
 		"auth.issuer":                 "",

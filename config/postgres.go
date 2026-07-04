@@ -21,22 +21,24 @@ type ServicePostgresConfigGetter interface {
 	GetMinConnLifeTime() time.Duration
 	GetMaxConnIdleTime() time.Duration
 	GetSchema() string
+	GetMigrationsEnabled() bool
 	DSN() string
 }
 
 type ServicePostgresConfig struct {
-	URI             string        `mapstructure:"uri"`
-	Host            string        `mapstructure:"host"`
-	Port            int           `mapstructure:"port"`
-	User            string        `mapstructure:"user"`
-	Password        string        `mapstructure:"password"`
-	Database        string        `mapstructure:"database"`
-	Schema          string        `mapstructure:"schema"`
-	SSLMode         string        `mapstructure:"sslmode"`
-	ConnTimeout     int           `mapstructure:"conn_timeout"`
-	MaxConn         int           `mapstructure:"max_conn"`
-	MaxConnLifetime time.Duration `mapstructure:"max_conn_lifetime"`
-	MaxConnIdleTime time.Duration `mapstructure:"max_conn_idle_time"`
+	URI               string        `mapstructure:"uri"`
+	Host              string        `mapstructure:"host"`
+	Port              int           `mapstructure:"port"`
+	User              string        `mapstructure:"user"`
+	Password          string        `mapstructure:"password"`
+	Database          string        `mapstructure:"database"`
+	Schema            string        `mapstructure:"schema"`
+	SSLMode           string        `mapstructure:"sslmode"`
+	ConnTimeout       int           `mapstructure:"conn_timeout"`
+	MaxConn           int           `mapstructure:"max_conn"`
+	MaxConnLifetime   time.Duration `mapstructure:"max_conn_lifetime"`
+	MaxConnIdleTime   time.Duration `mapstructure:"max_conn_idle_time"`
+	MigrationsEnabled bool          `mapstructure:"migrations_enabled"`
 }
 
 func (c ServicePostgresConfig) GetURI() string {
@@ -65,6 +67,10 @@ func (c ServicePostgresConfig) GetDatabase() string {
 
 func (c ServicePostgresConfig) GetSchema() string {
 	return c.Schema
+}
+
+func (c ServicePostgresConfig) GetMigrationsEnabled() bool {
+	return c.MigrationsEnabled
 }
 
 func (c ServicePostgresConfig) GetSSLMode() string {

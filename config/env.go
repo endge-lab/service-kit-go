@@ -40,6 +40,7 @@ func bindServiceEnv(v *viper.Viper) error {
 		"postgres.max_conn":           {"POSTGRES_MAXCONN", "POSTGRES_MAX_CONN"},
 		"postgres.max_conn_lifetime":  {"POSTGRES_MAXCONN_LIFETIME", "POSTGRES_MAX_CONN_LIFETIME"},
 		"postgres.max_conn_idle_time": {"POSTGRES_MAXCONN_IDLETIME", "POSTGRES_MAX_CONN_IDLE_TIME"},
+		"postgres.migrations_enabled": {"POSTGRES_MIGRATIONS_ENABLED", "MIGRATIONS_ENABLED"},
 		"auth.enabled":                {"AUTH_ENABLED"},
 		"auth.service_url":            {"AUTH_SERVICE_URL"},
 		"auth.issuer":                 {"AUTH_ISSUER"},
