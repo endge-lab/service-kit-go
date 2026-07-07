@@ -8,8 +8,25 @@ import (
 func TestSanitizeURL(t *testing.T) {
 	t.Parallel()
 
-	if got := SanitizeURL("/health?full=true"); got != "/health" {
-		t.Fatalf("unexpected sanitized url: %s", got)
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "empty", raw: "", want: ""},
+		{name: "no query", raw: "/health", want: "/health"},
+		{name: "strips query", raw: "/health?full=true", want: "/health"},
+		{name: "query at start", raw: "?token=secret", want: ""},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := SanitizeURL(tt.raw); got != tt.want {
+				t.Fatalf("SanitizeURL(%q) = %q, want %q", tt.raw, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -19,6 +36,25 @@ func TestWithRequestID(t *testing.T) {
 	ctx := WithRequestID(context.Background(), "req-1")
 	if requestID, ok := RequestIDFromContext(ctx); !ok || requestID != "req-1" {
 		t.Fatalf("unexpected request id: %q, ok=%v", requestID, ok)
+	}
+}
+
+func TestContextValuesTrimAndMissing(t *testing.T) {
+	t.Parallel()
+
+	if value, ok := RequestIDFromContext(context.Background()); ok || value != "" {
+		t.Fatalf("missing request id = %q, %v; want empty false", value, ok)
+	}
+	if value, ok := UserIDFromContext(context.Background()); ok || value != "" {
+		t.Fatalf("missing user id = %q, %v; want empty false", value, ok)
+	}
+	if value, ok := SessionIDFromContext(context.Background()); ok || value != "" {
+		t.Fatalf("missing session id = %q, %v; want empty false", value, ok)
+	}
+
+	ctx := WithRequestID(context.Background(), " req-1 ")
+	if value, _ := RequestIDFromContext(ctx); value != "req-1" {
+		t.Fatalf("trimmed request id = %q, want req-1", value)
 	}
 }
 

@@ -62,7 +62,6 @@ func (c *ServiceConfig) normalizeAuth() {
 }
 
 func (c *ServiceConfig) normalizePostgres() {
-	c.Postgres.URI = strings.TrimSpace(c.Postgres.URI)
 	c.Postgres.Host = strings.TrimSpace(c.Postgres.Host)
 	c.Postgres.User = strings.TrimSpace(c.Postgres.User)
 	c.Postgres.Password = strings.TrimSpace(c.Postgres.Password)

@@ -77,12 +77,16 @@ func (c ServiceConfig) validateAuth() error {
 
 func (c ServiceConfig) validatePostgres() error {
 	switch {
-	case c.Postgres.URI == "" && c.Postgres.Host == "":
-		return errors.New("config.postgres.host is required when config.postgres.uri is empty")
-	case c.Postgres.URI == "" && c.Postgres.User == "":
-		return errors.New("config.postgres.user is required when config.postgres.uri is empty")
-	case c.Postgres.URI == "" && c.Postgres.Database == "":
-		return errors.New("config.postgres.database is required when config.postgres.uri is empty")
+	case c.Postgres.Host == "":
+		return errors.New("config.postgres.host is required")
+	case c.Postgres.Port <= 0:
+		return errors.New("config.postgres.port must be positive")
+	case c.Postgres.User == "":
+		return errors.New("config.postgres.user is required")
+	case c.Postgres.Database == "":
+		return errors.New("config.postgres.database is required")
+	case c.Postgres.SSLMode == "":
+		return errors.New("config.postgres.sslmode is required")
 	default:
 		return nil
 	}

@@ -95,6 +95,62 @@ func TestCustomValidatorValidateField(t *testing.T) {
 			wantMsg:   "min length 3",
 		},
 		{
+			name:      "max",
+			value:     "abcd",
+			tag:       "max=3",
+			wantErr:   true,
+			wantField: "value",
+			wantMsg:   "max length 3",
+		},
+		{
+			name:      "len",
+			value:     "abcd",
+			tag:       "len=3",
+			wantErr:   true,
+			wantField: "value",
+			wantMsg:   "must be exactly 3 characters long",
+		},
+		{
+			name:      "oneof",
+			value:     "archived",
+			tag:       "oneof=active done",
+			wantErr:   true,
+			wantField: "value",
+			wantMsg:   "must be one of [active done]",
+		},
+		{
+			name:      "gt",
+			value:     1,
+			tag:       "gt=1",
+			wantErr:   true,
+			wantField: "value",
+			wantMsg:   "must be greater than 1",
+		},
+		{
+			name:      "lte",
+			value:     2,
+			tag:       "lte=1",
+			wantErr:   true,
+			wantField: "value",
+			wantMsg:   "must be less than or equal to 1",
+		},
+		{
+			name:      "lt",
+			value:     2,
+			tag:       "lt=2",
+			wantErr:   true,
+			wantField: "value",
+			wantMsg:   "must be less than 2",
+		},
+		{
+			name:      "uuid",
+			value:     "not-uuid",
+			tag:       "uuid",
+			wantErr:   true,
+			wantField: "value",
+			wantMsg:   "must be a valid UUID",
+		},
+		{
 			name:      "password",
 			value:     "nouppercase1",
 			tag:       "password",
@@ -128,6 +184,31 @@ func TestCustomValidatorValidateField(t *testing.T) {
 				t.Fatalf("Fields[%q] = %q, want %q; all fields: %#v", tt.wantField, got, tt.wantMsg, validationErr.Fields)
 			}
 		})
+	}
+}
+
+func TestCustomValidatorUsesJSONNamesAndDefaultMessages(t *testing.T) {
+	t.Parallel()
+
+	type input struct {
+		Ignored string `json:"-" validate:"required"`
+		Title   string `json:"title,omitempty" validate:"startswith=todo"`
+	}
+
+	err := NewValidator().Validate(input{Title: "task"})
+	if err == nil {
+		t.Fatal("Validate() error = nil, want validation errors")
+	}
+
+	validationErr, ok := AsValidationErr(err)
+	if !ok {
+		t.Fatalf("AsValidationErr() ok = false for %T", err)
+	}
+	if got := validationErr.Fields["title"]; got != "failed validation on 'startswith'" {
+		t.Fatalf("title error = %q, want default startswith message; fields=%#v", got, validationErr.Fields)
+	}
+	if got := validationErr.Fields["Ignored"]; got != "required field" {
+		t.Fatalf("json '-' field error = %q, want Go field name fallback; fields=%#v", got, validationErr.Fields)
 	}
 }
 

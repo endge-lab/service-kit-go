@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 )
 
 type ServicePostgresConfigGetter interface {
-	GetURI() string
 	GetUser() string
 	GetPassword() string
 	GetDatabase() string
@@ -26,7 +24,6 @@ type ServicePostgresConfigGetter interface {
 }
 
 type ServicePostgresConfig struct {
-	URI               string        `mapstructure:"uri"`
 	Host              string        `mapstructure:"host"`
 	Port              int           `mapstructure:"port"`
 	User              string        `mapstructure:"user"`
@@ -39,10 +36,6 @@ type ServicePostgresConfig struct {
 	MaxConnLifetime   time.Duration `mapstructure:"max_conn_lifetime"`
 	MaxConnIdleTime   time.Duration `mapstructure:"max_conn_idle_time"`
 	MigrationsEnabled bool          `mapstructure:"migrations_enabled"`
-}
-
-func (c ServicePostgresConfig) GetURI() string {
-	return c.URI
 }
 
 func (c ServicePostgresConfig) GetUser() string {
@@ -94,10 +87,6 @@ func (c ServicePostgresConfig) GetMaxConnIdleTime() time.Duration {
 }
 
 func (c ServicePostgresConfig) DSN() string {
-	if strings.TrimSpace(c.URI) != "" {
-		return strings.TrimSpace(c.URI)
-	}
-
 	dsn := &url.URL{
 		Scheme: "postgres",
 		User:   url.UserPassword(c.User, c.Password),

@@ -82,6 +82,19 @@ func TestLoadServiceConfigEnvOverridesYAML(t *testing.T) {
 	}
 }
 
+func TestLoadWrapper(t *testing.T) {
+	clearConfigEnv(t)
+	t.Setenv("CONFIG_PATH", writeConfigFile(t, serviceConfigYAML("wrapper-service", "development")))
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.App.Name != "wrapper-service" {
+		t.Fatalf("Load() App.Name = %q, want wrapper-service", cfg.App.Name)
+	}
+}
+
 func TestServiceConfigNormalize(t *testing.T) {
 	cfg := validServiceConfig()
 	cfg.App.Env = " dev.local "
@@ -152,12 +165,62 @@ func TestServiceConfigValidate(t *testing.T) {
 			wantErr: "config.auth.issuer is required",
 		},
 		{
+			name: "missing auth service url",
+			mutate: func(c *ServiceConfig) {
+				c.Auth.Enabled = true
+				c.Auth.ServiceURL = ""
+				c.Auth.Issuer = "https://auth.example.test"
+			},
+			wantErr: "config.auth.service_url is required",
+		},
+		{
+			name: "missing http port",
+			mutate: func(c *ServiceConfig) {
+				c.HTTP.Port = ""
+			},
+			wantErr: "config.http.port is required",
+		},
+		{
+			name: "missing cors origins",
+			mutate: func(c *ServiceConfig) {
+				c.HTTP.CORSAllowedOrigins = ""
+			},
+			wantErr: "config.http.cors_allowed_origins is required",
+		},
+		{
+			name: "invalid redis port",
+			mutate: func(c *ServiceConfig) {
+				c.Redis.Port = 0
+			},
+			wantErr: "config.redis.port must be positive",
+		},
+		{
+			name: "missing postgres host",
+			mutate: func(c *ServiceConfig) {
+				c.Postgres.Host = ""
+			},
+			wantErr: "config.postgres.host is required",
+		},
+		{
+			name: "missing postgres user",
+			mutate: func(c *ServiceConfig) {
+				c.Postgres.User = ""
+			},
+			wantErr: "config.postgres.user is required",
+		},
+		{
 			name: "missing postgres database",
 			mutate: func(c *ServiceConfig) {
-				c.Postgres.URI = ""
 				c.Postgres.Database = ""
 			},
 			wantErr: "config.postgres.database is required",
+		},
+		{
+			name: "missing postgres sslmode",
+			mutate: func(c *ServiceConfig) {
+				c.Postgres.SSLMode = ""
+			},
+			wantErr: "config.postgres.sslmode is required",
 		},
 		{
 			name: "missing redis host",
@@ -196,21 +259,6 @@ func TestServiceConfigValidate(t *testing.T) {
 				t.Fatalf("Validate() error = %q, want containing %q", err.Error(), tt.wantErr)
 			}
 		})
-	}
-}
-
-func TestServicePostgresDSNUsesURIWhenProvided(t *testing.T) {
-	cfg := ServicePostgresConfig{
-		URI:      "postgres://uri-user:uri-pass@uri-host:5432/uri-db?sslmode=require",
-		Host:     "ignored",
-		Port:     9999,
-		User:     "ignored",
-		Password: "ignored",
-		Database: "ignored",
-	}
-
-	if got := cfg.DSN(); got != cfg.URI {
-		t.Fatalf("DSN() = %q, want URI %q", got, cfg.URI)
 	}
 }
 
@@ -291,11 +339,121 @@ func TestServiceConfigGetters(t *testing.T) {
 	if getter.GetPostgresConfig().Database != cfg.Postgres.Database {
 		t.Fatalf("GetPostgresConfig() mismatch")
 	}
+	if getter.GetLoggerConfig().Level != cfg.Logger.Level {
+		t.Fatalf("GetLoggerConfig() mismatch")
+	}
+	if getter.GetMetricsConfig().BindAddress != cfg.Metrics.BindAddress {
+		t.Fatalf("GetMetricsConfig() mismatch")
+	}
+	if getter.GetAuthConfig().JWKSPath != cfg.Auth.JWKSPath {
+		t.Fatalf("GetAuthConfig() mismatch")
+	}
+	if getter.GetTelemetryConfig().OTLPEndpoint != cfg.Telemetry.OTLPEndpoint {
+		t.Fatalf("GetTelemetryConfig() mismatch")
+	}
+	if getter.GetRedpandaConfig().ClientID != cfg.Redpanda.ClientID {
+		t.Fatalf("GetRedpandaConfig() mismatch")
+	}
 	if getter.GetRedisConfig().Addr() != cfg.Redis.Addr() {
 		t.Fatalf("GetRedisConfig() mismatch")
 	}
 	if !getter.GetTLSConfig().Enabled {
 		t.Fatalf("GetTLSConfig().Enabled = false, want true")
+	}
+}
+
+func TestPublicConfigHelpersAndGetters(t *testing.T) {
+	t.Parallel()
+
+	authCfg := ServiceAuthConfig{
+		Enabled:          true,
+		ServiceURL:       "https://auth.example.test/",
+		Issuer:           "https://issuer.example.test",
+		AllowedAudiences: "web,admin",
+		JWKSPath:         "jwks.json",
+		JWKSCacheTTL:     time.Minute,
+		Timeout:          2 * time.Second,
+	}
+	if !authCfg.GetEnabled() || authCfg.GetServiceURL() != authCfg.ServiceURL || authCfg.GetIssuer() != authCfg.Issuer ||
+		authCfg.GetAllowedAudiences() != authCfg.AllowedAudiences || authCfg.GetJWKSPath() != authCfg.JWKSPath ||
+		authCfg.GetJWKSCacheTTL() != time.Minute || authCfg.GetTimeout() != 2*time.Second {
+		t.Fatalf("auth getters mismatch: %#v", authCfg)
+	}
+	if got := authCfg.JWKSURL(); got != "https://auth.example.test/jwks.json" {
+		t.Fatalf("JWKSURL() = %q, want normalized url", got)
+	}
+
+	redpandaCfg := ServiceRedpandaConfig{
+		Enabled:          true,
+		Brokers:          " broker-1:9092, ,broker-2:9092 ",
+		ClientID:         "client",
+		DialTimeout:      time.Second,
+		ReadBatchTimeout: 2 * time.Second,
+		WriteTimeout:     3 * time.Second,
+	}
+	if !redpandaCfg.GetEnabled() || redpandaCfg.GetBrokers() != redpandaCfg.Brokers || redpandaCfg.GetClientID() != "client" ||
+		redpandaCfg.GetDialTimeout() != time.Second || redpandaCfg.GetReadBatchTimeout() != 2*time.Second || redpandaCfg.GetWriteTimeout() != 3*time.Second {
+		t.Fatalf("redpanda getters mismatch: %#v", redpandaCfg)
+	}
+	if brokers := redpandaCfg.BrokerList(); len(brokers) != 2 || brokers[0] != "broker-1:9092" || brokers[1] != "broker-2:9092" {
+		t.Fatalf("BrokerList() = %#v, want two trimmed brokers", brokers)
+	}
+	if brokers := (ServiceRedpandaConfig{}).BrokerList(); brokers != nil {
+		t.Fatalf("empty BrokerList() = %#v, want nil", brokers)
+	}
+
+	tlsCfg := ServiceTLSConfig{Enabled: true, CertFile: "cert", KeyFile: "key", CAFile: "ca", InsecureSkipVerify: true}
+	if !tlsCfg.GetEnabled() || tlsCfg.GetCertFile() != "cert" || tlsCfg.GetKeyFile() != "key" || tlsCfg.GetCaFile() != "ca" || !tlsCfg.GetInsecureSkipVerify() {
+		t.Fatalf("tls getters mismatch: %#v", tlsCfg)
+	}
+
+	telemetryCfg := ServiceTelemetryConfig{Enabled: true, OTLPEndpoint: "otel:4317", OTLPInsecure: true}
+	if !telemetryCfg.GetEnabled() || telemetryCfg.GetOTLPEndpoint() != "otel:4317" || !telemetryCfg.GetOTLPInsecure() {
+		t.Fatalf("telemetry getters mismatch: %#v", telemetryCfg)
+	}
+
+	appCfg := ServiceAppConfig{Env: "production", Name: "svc", Version: "v1", PublicURL: "https://svc"}
+	if !appCfg.IsProduction() || appCfg.GetEnv() != "production" || appCfg.GetName() != "svc" || appCfg.GetVersion() != "v1" || appCfg.GetPublicURL() != "https://svc" {
+		t.Fatalf("app getters mismatch: %#v", appCfg)
+	}
+
+	httpCfg := ServiceHTTPConfig{Port: "8080", CORSAllowedOrigins: "https://app.example.test"}
+	if httpCfg.GetPort() != "8080" || httpCfg.GetCORSAllowedOrigins() != "https://app.example.test" {
+		t.Fatalf("http getters mismatch: %#v", httpCfg)
+	}
+	loggerCfg := ServiceLoggerConfig{Level: "warn"}
+	if loggerCfg.GetLoggerConfig() != "warn" {
+		t.Fatalf("logger getter mismatch: %#v", loggerCfg)
+	}
+	metricsCfg := ServiceMetricsConfig{Enabled: true, BindAddress: ":9090", HandlerPath: "/metrics"}
+	if !metricsCfg.GetEnabled() || metricsCfg.GetBindAddress() != ":9090" || metricsCfg.GetHandlerPath() != "/metrics" {
+		t.Fatalf("metrics getters mismatch: %#v", metricsCfg)
+	}
+	postgresCfg := ServicePostgresConfig{
+		Host:              "host",
+		Port:              5432,
+		User:              "user",
+		Password:          "pass",
+		Database:          "db",
+		Schema:            "public",
+		SSLMode:           "disable",
+		ConnTimeout:       5,
+		MaxConn:           10,
+		MaxConnLifetime:   time.Minute,
+		MaxConnIdleTime:   2 * time.Minute,
+		MigrationsEnabled: true,
+	}
+	if postgresCfg.GetUser() != "user" || postgresCfg.GetPassword() != "pass" || postgresCfg.GetHost() != "host" ||
+		postgresCfg.GetPort() != 5432 || postgresCfg.GetDatabase() != "db" ||
+		postgresCfg.GetSchema() != "public" || !postgresCfg.GetMigrationsEnabled() || postgresCfg.GetSSLMode() != "disable" ||
+		postgresCfg.GetConnTimeout() != 5 || postgresCfg.GetMaxConn() != 10 ||
+		postgresCfg.GetMinConnLifeTime() != time.Minute || postgresCfg.GetMaxConnIdleTime() != 2*time.Minute {
+		t.Fatalf("postgres getters mismatch: %#v", postgresCfg)
+	}
+	redisCfg := ServiceRedisConfig{Host: "redis", Port: 6379, Username: "user", Password: "pass", Database: 2}
+	if redisCfg.GetHost() != "redis" || redisCfg.GetPort() != 6379 || redisCfg.GetUsername() != "user" ||
+		redisCfg.GetPassword() != "pass" || redisCfg.GetDatabase() != 2 {
+		t.Fatalf("redis getters mismatch: %#v", redisCfg)
 	}
 }
 
@@ -444,8 +602,6 @@ func clearConfigEnv(t *testing.T) {
 		"REDIS_USERNAME",
 		"REDIS_PASSWORD",
 		"REDIS_DATABASE",
-		"DATABASE_URI",
-		"POSTGRES_URI",
 		"POSTGRES_HOST",
 		"POSTGRES_PORT",
 		"POSTGRES_USER",

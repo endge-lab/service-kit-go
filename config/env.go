@@ -28,7 +28,6 @@ func bindServiceEnv(v *viper.Viper) error {
 		"redis.username":              {"REDIS_USERNAME"},
 		"redis.password":              {"REDIS_PASSWORD"},
 		"redis.database":              {"REDIS_DATABASE"},
-		"postgres.uri":                {"DATABASE_URI", "POSTGRES_URI"},
 		"postgres.host":               {"POSTGRES_HOST"},
 		"postgres.port":               {"POSTGRES_PORT"},
 		"postgres.user":               {"POSTGRES_USER"},

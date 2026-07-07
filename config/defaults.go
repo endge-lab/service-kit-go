@@ -20,7 +20,6 @@ func setServiceDefaults(v *viper.Viper, appEnv string) {
 		"redis.username":              "redis",
 		"redis.password":              "",
 		"redis.database":              0,
-		"postgres.uri":                "",
 		"postgres.host":               "localhost",
 		"postgres.port":               5432,
 		"postgres.user":               "postgres",
