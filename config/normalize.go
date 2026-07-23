@@ -32,6 +32,22 @@ func (c *ServiceConfig) normalizeHTTP() {
 
 func (c *ServiceConfig) normalizeLogger() {
 	c.Logger.Level = strings.TrimSpace(c.Logger.Level)
+	c.Logger.OpenSearch.Endpoint = strings.TrimRight(strings.TrimSpace(c.Logger.OpenSearch.Endpoint), "/")
+	c.Logger.OpenSearch.Index = strings.TrimSpace(c.Logger.OpenSearch.Index)
+	c.Logger.OpenSearch.Username = strings.TrimSpace(c.Logger.OpenSearch.Username)
+	c.Logger.OpenSearch.Password = strings.TrimSpace(c.Logger.OpenSearch.Password)
+	if c.Logger.OpenSearch.FlushInterval <= 0 {
+		c.Logger.OpenSearch.FlushInterval = time.Second
+	}
+	if c.Logger.OpenSearch.BatchSize <= 0 {
+		c.Logger.OpenSearch.BatchSize = 100
+	}
+	if c.Logger.OpenSearch.QueueSize <= 0 {
+		c.Logger.OpenSearch.QueueSize = 1000
+	}
+	if c.Logger.OpenSearch.RequestTimeout <= 0 {
+		c.Logger.OpenSearch.RequestTimeout = 5 * time.Second
+	}
 }
 
 func (c *ServiceConfig) normalizeMetrics() {

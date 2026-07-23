@@ -1,12 +1,24 @@
 package config
 
-import "errors"
+import (
+	"errors"
+	"net"
+	"net/url"
+	"strconv"
+	"strings"
+)
 
 func (c ServiceConfig) Validate() error {
 	if err := c.validateApp(); err != nil {
 		return err
 	}
+	if err := c.validateLogger(); err != nil {
+		return err
+	}
 	if err := c.validateHTTP(); err != nil {
+		return err
+	}
+	if err := c.validateMetrics(); err != nil {
 		return err
 	}
 	if err := c.validateRedis(); err != nil {
@@ -26,6 +38,32 @@ func (c ServiceConfig) Validate() error {
 	}
 	if err := c.validateTLS(); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (c ServiceConfig) validateMetrics() error {
+	if !c.Metrics.Enabled {
+		return nil
+	}
+
+	address := strings.TrimSpace(c.Metrics.BindAddress)
+	if address == "" {
+		return errors.New("config.metrics.bind_address is required when config.metrics.enabled=true")
+	}
+	_, port, err := net.SplitHostPort(address)
+	if err != nil || port == "" {
+		return errors.New("config.metrics.bind_address must be a host:port when config.metrics.enabled=true")
+	}
+	portNumber, err := strconv.Atoi(port)
+	if err != nil || portNumber < 1 || portNumber > 65535 {
+		return errors.New("config.metrics.bind_address must contain a valid port when config.metrics.enabled=true")
+	}
+
+	path := strings.TrimSpace(c.Metrics.HandlerPath)
+	if path == "" || !strings.HasPrefix(path, "/") {
+		return errors.New("config.metrics.handler_path must start with / when config.metrics.enabled=true")
 	}
 
 	return nil
@@ -95,6 +133,29 @@ func (c ServiceConfig) validatePostgres() error {
 func (c ServiceConfig) validateTelemetry() error {
 	if c.Telemetry.Enabled && c.Telemetry.OTLPEndpoint == "" {
 		return errors.New("config.telemetry.otlp_endpoint is required when config.telemetry.enabled=true")
+	}
+
+	return nil
+}
+
+func (c ServiceConfig) validateLogger() error {
+	if !c.Logger.OpenSearch.Enabled {
+		return nil
+	}
+
+	endpoint := c.Logger.OpenSearch.Endpoint
+	if endpoint == "" {
+		return errors.New("config.logger.opensearch.endpoint is required when config.logger.opensearch.enabled=true")
+	}
+	parsed, err := url.ParseRequestURI(endpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return errors.New("config.logger.opensearch.endpoint must be an absolute HTTP URL")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return errors.New("config.logger.opensearch.endpoint must use http or https")
+	}
+	if c.Logger.OpenSearch.Index == "" {
+		return errors.New("config.logger.opensearch.index is required when config.logger.opensearch.enabled=true")
 	}
 
 	return nil

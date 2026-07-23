@@ -19,16 +19,16 @@ type Config struct {
 }
 
 // NewLogger создает единый JSON-логгер, пишущий в stdout.
-func NewLogger(cfg Config) (*zap.Logger, error) {
+func NewLogger(cfg Config, additionalCores ...zapcore.Core) (*zap.Logger, error) {
 	level := zapcore.InfoLevel
 	if err := level.UnmarshalText([]byte(normalizeLevel(cfg.Level))); err != nil {
 		return nil, err
 	}
 
-	return newLogger(cfg, level, zapcore.Lock(os.Stdout)), nil
+	return newLogger(cfg, level, zapcore.Lock(os.Stdout), additionalCores...), nil
 }
 
-func newLogger(cfg Config, level zapcore.Level, sink zapcore.WriteSyncer) *zap.Logger {
+func newLogger(cfg Config, level zapcore.Level, sink zapcore.WriteSyncer, additionalCores ...zapcore.Core) *zap.Logger {
 	encoderConfig := zapcore.EncoderConfig{
 		TimeKey:        "time",
 		LevelKey:       "level",
@@ -41,13 +41,18 @@ func newLogger(cfg Config, level zapcore.Level, sink zapcore.WriteSyncer) *zap.L
 		EncodeDuration: zapcore.StringDurationEncoder,
 	}
 
-	core := zapcore.NewCore(
+	cores := []zapcore.Core{zapcore.NewCore(
 		zapcore.NewJSONEncoder(encoderConfig),
 		sink,
 		level,
-	)
+	)}
+	for _, core := range additionalCores {
+		if core != nil {
+			cores = append(cores, core)
+		}
+	}
 
-	return zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).With(
+	return zap.New(zapcore.NewTee(cores...), zap.AddCaller(), zap.AddCallerSkip(1)).With(
 		zap.String("service.name", strings.TrimSpace(cfg.ServiceName)),
 		zap.String("deployment.environment", strings.TrimSpace(cfg.Environment)),
 		zap.String("service.version", strings.TrimSpace(cfg.Version)),
