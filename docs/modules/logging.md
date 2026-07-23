@@ -31,3 +31,40 @@ if err != nil {
 logger = logging.WithComponent(logger, "bootstrap")
 logger.Info("service started")
 ```
+
+## OpenSearch exporter
+
+`OpenSearchExporter` — опциональный второй Zap core. JSON-логи продолжают
+писаться в stdout, а exporter асинхронно группирует записи и отправляет их в
+OpenSearch Bulk API. Недоступность OpenSearch не блокирует обработку запросов:
+очередь ограничена, а неотправленные записи отбрасываются.
+
+```go
+import (
+    "context"
+    "time"
+)
+
+exporter, err := logging.NewOpenSearchExporter(logging.OpenSearchConfig{
+    Level:          "info",
+    Endpoint:       "https://opensearch.example",
+    Index:          "service-logs",
+    FlushInterval:  time.Second,
+    RequestTimeout: 5 * time.Second,
+})
+if err != nil {
+    return err
+}
+
+logger, err := logging.NewLogger(logging.Config{Level: "info"}, exporter)
+if err != nil {
+    return err
+}
+defer func() {
+    _ = logger.Sync()
+    _ = exporter.Shutdown(context.Background())
+}()
+```
+
+Документы содержат `@timestamp`, `log.level`, `message`, caller, stacktrace и
+все поля Zap, включая `service.name`, `trace_id` и `span_id` при наличии.

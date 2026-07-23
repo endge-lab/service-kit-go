@@ -165,6 +165,14 @@ func TestServiceConfigValidate(t *testing.T) {
 			wantErr: "config.auth.issuer is required",
 		},
 		{
+			name: "missing opensearch endpoint",
+			mutate: func(c *ServiceConfig) {
+				c.Logger.OpenSearch.Enabled = true
+				c.Logger.OpenSearch.Endpoint = ""
+			},
+			wantErr: "config.logger.opensearch.endpoint is required when config.logger.opensearch.enabled=true",
+		},
+		{
 			name: "missing auth service url",
 			mutate: func(c *ServiceConfig) {
 				c.Auth.Enabled = true
@@ -186,6 +194,23 @@ func TestServiceConfigValidate(t *testing.T) {
 				c.HTTP.CORSAllowedOrigins = ""
 			},
 			wantErr: "config.http.cors_allowed_origins is required",
+		},
+		{
+			name: "metrics address is required when enabled",
+			mutate: func(c *ServiceConfig) {
+				c.Metrics.Enabled = true
+				c.Metrics.BindAddress = ""
+			},
+			wantErr: "config.metrics.bind_address is required",
+		},
+		{
+			name: "metrics path must start with slash",
+			mutate: func(c *ServiceConfig) {
+				c.Metrics.Enabled = true
+				c.Metrics.BindAddress = ":9090"
+				c.Metrics.HandlerPath = "metrics"
+			},
+			wantErr: "config.metrics.handler_path must start with /",
 		},
 		{
 			name: "invalid redis port",
@@ -593,6 +618,16 @@ func clearConfigEnv(t *testing.T) {
 		"HTTP_PORT",
 		"CORS_ALLOWED_ORIGINS",
 		"LOGGER_LEVEL",
+		"LOGGER_OPENSEARCH_ENABLED",
+		"LOGGER_OPENSEARCH_ENDPOINT",
+		"LOGGER_OPENSEARCH_INDEX",
+		"LOGGER_OPENSEARCH_USERNAME",
+		"LOGGER_OPENSEARCH_PASSWORD",
+		"LOGGER_OPENSEARCH_INSECURE_SKIP_VERIFY",
+		"LOGGER_OPENSEARCH_FLUSH_INTERVAL",
+		"LOGGER_OPENSEARCH_BATCH_SIZE",
+		"LOGGER_OPENSEARCH_QUEUE_SIZE",
+		"LOGGER_OPENSEARCH_REQUEST_TIMEOUT",
 		"METRICS_ENABLED",
 		"METRICS_BIND_ADDRESS",
 		"METRICS_HANDLER_PATH",

@@ -2,16 +2,20 @@ package telemetry
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"time"
 
 	serviceerrors "github.com/endge-lab/service-kit-go/pkg/errors"
 
+	prometheusclient "github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	otelprometheus "go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -25,21 +29,23 @@ import (
 
 // Config описывает общие OTEL-настройки runtime.
 type Config struct {
-	ServiceName     string
-	ServiceVersion  string
-	Environment     string
-	OTLPEndpoint    string
-	OTLPInsecure    bool
-	MetricsInterval time.Duration
-	TraceSampleMode string
+	ServiceName       string
+	ServiceVersion    string
+	Environment       string
+	OTLPEndpoint      string
+	OTLPInsecure      bool
+	MetricsInterval   time.Duration
+	PrometheusEnabled bool
+	TraceSampleMode   string
 }
 
 // Providers объединяет tracer/meter/resource и умеет их корректно завершать.
 type Providers struct {
-	resource       *resource.Resource
-	propagator     propagation.TextMapPropagator
-	tracerProvider *sdktrace.TracerProvider
-	meterProvider  *sdkmetric.MeterProvider
+	resource          *resource.Resource
+	propagator        propagation.TextMapPropagator
+	tracerProvider    *sdktrace.TracerProvider
+	meterProvider     *sdkmetric.MeterProvider
+	prometheusHandler http.Handler
 }
 
 // NewProviders поднимает tracer и meter provider. При пустом endpoint работает в noop-режиме.
@@ -61,18 +67,29 @@ func NewProviders(ctx context.Context, cfg Config, logger *zap.Logger) (*Provide
 	}
 	otel.SetTracerProvider(tracerProvider)
 
-	meterProvider, err := newMeterProvider(ctx, cfg, res, logger)
+	meterProvider, prometheusHandler, err := newMeterProvider(ctx, cfg, res, logger)
 	if err != nil {
 		return nil, err
 	}
 	otel.SetMeterProvider(meterProvider)
 
 	return &Providers{
-		resource:       res,
-		propagator:     propagator,
-		tracerProvider: tracerProvider,
-		meterProvider:  meterProvider,
+		resource:          res,
+		propagator:        propagator,
+		tracerProvider:    tracerProvider,
+		meterProvider:     meterProvider,
+		prometheusHandler: prometheusHandler,
 	}, nil
+}
+
+// PrometheusHandler returns the scrape handler when Prometheus metrics are
+// enabled. It returns nil when metrics are exported through OTLP or disabled.
+func (p *Providers) PrometheusHandler() http.Handler {
+	if p == nil {
+		return nil
+	}
+
+	return p.prometheusHandler
 }
 
 // Resource возвращает общий telemetry resource.
@@ -184,7 +201,20 @@ func newTraceProvider(ctx context.Context, cfg Config, res *resource.Resource, l
 	), nil
 }
 
-func newMeterProvider(ctx context.Context, cfg Config, res *resource.Resource, logger *zap.Logger) (*sdkmetric.MeterProvider, error) {
+func newMeterProvider(ctx context.Context, cfg Config, res *resource.Resource, logger *zap.Logger) (*sdkmetric.MeterProvider, http.Handler, error) {
+	if cfg.PrometheusEnabled {
+		registry := prometheusclient.NewRegistry()
+		exporter, err := otelprometheus.New(otelprometheus.WithRegisterer(registry))
+		if err != nil {
+			return nil, nil, serviceerrors.Wrap(err, "telemetry.prometheus_exporter_failed", "Не удалось создать Prometheus metric exporter", 500)
+		}
+
+		return sdkmetric.NewMeterProvider(
+			sdkmetric.WithResource(res),
+			sdkmetric.WithReader(exporter),
+		), promhttp.HandlerFor(registry, promhttp.HandlerOpts{}), nil
+	}
+
 	endpoint := strings.TrimSpace(cfg.OTLPEndpoint)
 	if endpoint == "" {
 		if logger != nil {
@@ -192,7 +222,7 @@ func newMeterProvider(ctx context.Context, cfg Config, res *resource.Resource, l
 		}
 		return sdkmetric.NewMeterProvider(
 			sdkmetric.WithResource(res),
-		), nil
+		), nil, nil
 	}
 
 	clientOptions := []otlpmetricgrpc.Option{
@@ -205,7 +235,7 @@ func newMeterProvider(ctx context.Context, cfg Config, res *resource.Resource, l
 
 	exporter, err := otlpmetricgrpc.New(ctx, clientOptions...)
 	if err != nil {
-		return nil, serviceerrors.Wrap(err, "telemetry.metric_exporter_failed", "Не удалось создать metric exporter", 500)
+		return nil, nil, serviceerrors.Wrap(err, "telemetry.metric_exporter_failed", "Не удалось создать metric exporter", 500)
 	}
 
 	interval := cfg.MetricsInterval
@@ -216,5 +246,5 @@ func newMeterProvider(ctx context.Context, cfg Config, res *resource.Resource, l
 	return sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(res),
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter, sdkmetric.WithInterval(interval))),
-	), nil
+	), nil, nil
 }

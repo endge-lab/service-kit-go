@@ -3,6 +3,9 @@ package telemetry
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,6 +39,41 @@ func TestNewProvidersWithoutEndpoint(t *testing.T) {
 	}
 	if err := providers.Shutdown(context.Background()); err != nil {
 		t.Fatalf("shutdown: %v", err)
+	}
+}
+
+func TestProvidersExposePrometheusMetrics(t *testing.T) {
+	t.Parallel()
+
+	providers, err := NewProviders(context.Background(), Config{
+		ServiceName:       "svc",
+		ServiceVersion:    "0.1.0",
+		Environment:       "test",
+		PrometheusEnabled: true,
+	}, zap.NewNop())
+	if err != nil {
+		t.Fatalf("new providers: %v", err)
+	}
+	t.Cleanup(func() { _ = providers.Shutdown(context.Background()) })
+
+	counter, err := providers.Meter("test").Int64Counter("test.prometheus.requests")
+	if err != nil {
+		t.Fatalf("new counter: %v", err)
+	}
+	counter.Add(context.Background(), 3)
+
+	handler := providers.PrometheusHandler()
+	if handler == nil {
+		t.Fatal("expected Prometheus handler")
+	}
+	request := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if !strings.Contains(response.Body.String(), "test_prometheus_requests_total") {
+		t.Fatalf("Prometheus output does not contain recorded metric: %s", response.Body.String())
 	}
 }
 
