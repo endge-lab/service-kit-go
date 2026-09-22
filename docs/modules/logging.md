@@ -5,7 +5,7 @@
 ## Что входит
 
 - `Config` с полями `service.name`, `deployment.environment`, `service.version`
-- `NewLogger` для стандартного JSON-логирования в `stdout`
+- `NewLogger` с JSON-выводом для production и цветным console-выводом для local development
 - `WithComponent` для стабильного поля `component`
 - `WithContext` и trace helpers для автоматического добавления `trace_id` и `span_id`
 
@@ -32,10 +32,38 @@ logger = logging.WithComponent(logger, "bootstrap")
 logger.Info("service started")
 ```
 
+## Формат stdout
+
+`Format` отвечает только за представление stdout и не изменяет структуру
+OpenSearch-документов. При пустом `Format` logger выбирает `console` для
+`development` и `json` для остальных окружений.
+
+| Окружение | Пустой `Format` | Пустой `Color` |
+| --- | --- | --- |
+| `development` | `console` | `auto` |
+| `test`, `staging`, `production` и остальные | `json` | `never` |
+
+Явные `Format` и `Color` имеют приоритет над этими значениями. `auto` включает
+цвета только для интерактивного терминала; в Docker и других не-TTY выводах
+ANSI-коды не добавляются.
+
+```go
+logger, err := logging.NewLogger(logging.Config{
+    Level:       "debug",
+    Format:      "console", // json | console
+    Color:       "always",  // auto | always | never
+    Environment: "development",
+})
+```
+
+В `console`-режиме уровни раскрашены, а одинаковые `trace_id` получают один и
+тот же цвет. В production используйте `json`; ANSI-последовательности в JSON
+не добавляются.
+
 ## OpenSearch exporter
 
-`OpenSearchExporter` — опциональный второй Zap core. JSON-логи продолжают
-писаться в stdout, а exporter асинхронно группирует записи и отправляет их в
+`OpenSearchExporter` — опциональный второй Zap core. Exporter всегда строит
+JSON-документы, даже если stdout использует console-формат, и асинхронно группирует записи и отправляет их в
 OpenSearch Bulk API. Недоступность OpenSearch не блокирует обработку запросов:
 очередь ограничена, а неотправленные записи отбрасываются.
 

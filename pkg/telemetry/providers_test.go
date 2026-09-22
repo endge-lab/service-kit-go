@@ -14,16 +14,18 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
-func TestNewProvidersWithoutEndpoint(t *testing.T) {
+func TestNewProvidersWithoutEndpointDoesNotWarnWhenOTLPDisabled(t *testing.T) {
 	t.Parallel()
 
+	logCore, logs := observer.New(zap.WarnLevel)
 	providers, err := NewProviders(context.Background(), Config{
 		ServiceName:    "svc",
 		ServiceVersion: "0.1.0",
 		Environment:    "test",
-	}, zap.NewNop())
+	}, zap.New(logCore))
 	if err != nil {
 		t.Fatalf("new providers: %v", err)
 	}
@@ -39,6 +41,33 @@ func TestNewProvidersWithoutEndpoint(t *testing.T) {
 	}
 	if err := providers.Shutdown(context.Background()); err != nil {
 		t.Fatalf("shutdown: %v", err)
+	}
+	for _, message := range []string{"trace exporter disabled: endpoint is empty", "metric exporter disabled: endpoint is empty"} {
+		if entries := logs.FilterMessage(message).All(); len(entries) != 0 {
+			t.Fatalf("%q entries = %#v, want none", message, entries)
+		}
+	}
+}
+
+func TestNewProvidersWarnsWhenOTLPEnabledWithoutEndpoint(t *testing.T) {
+	t.Parallel()
+
+	logCore, logs := observer.New(zap.WarnLevel)
+	providers, err := NewProviders(context.Background(), Config{
+		ServiceName:    "svc",
+		ServiceVersion: "0.1.0",
+		Environment:    "test",
+		OTLPEnabled:    true,
+	}, zap.New(logCore))
+	if err != nil {
+		t.Fatalf("new providers: %v", err)
+	}
+	t.Cleanup(func() { _ = providers.Shutdown(context.Background()) })
+
+	for _, message := range []string{"trace exporter disabled: endpoint is empty", "metric exporter disabled: endpoint is empty"} {
+		if entries := logs.FilterMessage(message).All(); len(entries) != 1 {
+			t.Fatalf("%q entries = %#v, want one", message, entries)
+		}
 	}
 }
 
@@ -106,6 +135,7 @@ func TestStepRecordsSuccessErrorFailAndEvent(t *testing.T) {
 	defer func() { _ = provider.Shutdown(context.Background()) }()
 
 	ctx, step := StartTrace(context.Background(), provider.Tracer("test"), zap.NewNop(), "operation", attribute.String("component", "unit"))
+	step.SetAttributes(attribute.Int("http.response.status_code", 200))
 	step.Event("checkpoint", attribute.String("phase", "middle"))
 	step.End(nil)
 
@@ -124,6 +154,9 @@ func TestStepRecordsSuccessErrorFailAndEvent(t *testing.T) {
 	if len(ended[0].Events()) != 1 || ended[0].Events()[0].Name != "checkpoint" {
 		t.Fatalf("success span events = %#v, want checkpoint", ended[0].Events())
 	}
+	if !hasIntAttribute(ended[0].Attributes(), "http.response.status_code", 200) {
+		t.Fatalf("success span attributes missing http.response.status_code: %#v", ended[0].Attributes())
+	}
 	if ended[1].Name() != "failed" {
 		t.Fatalf("second span = %q, want failed", ended[1].Name())
 	}
@@ -133,12 +166,49 @@ func TestStepRecordsSuccessErrorFailAndEvent(t *testing.T) {
 	}
 }
 
+func TestStepKeepsTraceEventsWithoutSuccessLifecycleLogs(t *testing.T) {
+	t.Parallel()
+
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	defer func() { _ = provider.Shutdown(context.Background()) }()
+
+	logCore, logs := observer.New(zap.DebugLevel)
+	ctx, step := StartTrace(context.Background(), provider.Tracer("test"), zap.New(logCore), "operation")
+	step.Event("checkpoint")
+	step.End(nil)
+
+	if ended := recorder.Ended(); len(ended) != 1 || len(ended[0].Events()) != 1 || ended[0].Events()[0].Name != "checkpoint" {
+		t.Fatalf("trace event was not retained: %#v", ended)
+	}
+	for _, message := range []string{"span started", "span event", "span succeeded"} {
+		if entries := logs.FilterMessage(message).All(); len(entries) != 0 {
+			t.Fatalf("%q entries = %#v, want none", message, entries)
+		}
+	}
+
+	err := errors.New("repository unavailable")
+	_, failedStep := StartTrace(ctx, provider.Tracer("test"), zap.New(logCore), "failed")
+	failedStep.End(err)
+	failed := logs.FilterMessage("span failed").All()
+	if len(failed) != 1 {
+		t.Fatalf("failed span logs = %#v, want one", failed)
+	}
+	if occurrences := fieldOccurrences(failed[0].Context, "trace_id"); occurrences != 1 {
+		t.Fatalf("trace_id occurrences = %d, want 1; fields=%#v", occurrences, failed[0].Context)
+	}
+	if occurrences := fieldOccurrences(failed[0].Context, "span_id"); occurrences != 1 {
+		t.Fatalf("span_id occurrences = %d, want 1; fields=%#v", occurrences, failed[0].Context)
+	}
+}
+
 func TestStepNilAndNoopMethods(t *testing.T) {
 	t.Parallel()
 
 	var step *Step
 	step.End(errors.New("ignored"))
 	step.Fail(errors.New("ignored"))
+	step.SetAttributes(attribute.String("ignored", "value"))
 	step.Event("ignored")
 
 	_, realStep := StartTrace(context.Background(), nil, nil, "noop")
@@ -160,4 +230,23 @@ func hasAttribute(attrs []attribute.KeyValue, key string, value string) bool {
 		}
 	}
 	return false
+}
+
+func hasIntAttribute(attrs []attribute.KeyValue, key string, value int) bool {
+	for _, attr := range attrs {
+		if string(attr.Key) == key && attr.Value.AsInt64() == int64(value) {
+			return true
+		}
+	}
+	return false
+}
+
+func fieldOccurrences(fields []zap.Field, key string) int {
+	count := 0
+	for _, field := range fields {
+		if field.Key == key {
+			count++
+		}
+	}
+	return count
 }

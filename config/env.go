@@ -19,6 +19,8 @@ func bindServiceEnv(v *viper.Viper) error {
 		"http.port":                                    {"REST_PORT", "HTTP_PORT"},
 		"http.cors_allowed_origins":                    {"CORS_ALLOWED_ORIGINS"},
 		"logger.level":                                 {"LOGGER_LEVEL"},
+		"logger.format":                                {"LOGGER_FORMAT"},
+		"logger.color":                                 {"LOGGER_COLOR"},
 		"logger.opensearch.enabled":                    {"LOGGER_OPENSEARCH_ENABLED"},
 		"logger.opensearch.endpoint":                   {"LOGGER_OPENSEARCH_ENDPOINT"},
 		"logger.opensearch.index":                      {"LOGGER_OPENSEARCH_INDEX"},

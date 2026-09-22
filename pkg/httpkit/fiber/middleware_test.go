@@ -12,7 +12,10 @@ import (
 	"github.com/endge-lab/service-kit-go/pkg/httpkit"
 	gofiber "github.com/gofiber/fiber/v2"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric/noop"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
@@ -136,6 +139,83 @@ func TestTraceRecoveryErrorAndUtilityHandlers(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTraceMiddlewareUsesFinalHTTPStatusForSpanOutcome(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		path       string
+		handler    gofiber.Handler
+		wantStatus int
+		wantSpan   codes.Code
+	}{
+		{
+			name:       "success response",
+			path:       "/ok",
+			handler:    func(c *gofiber.Ctx) error { return c.SendStatus(gofiber.StatusOK) },
+			wantStatus: gofiber.StatusOK,
+			wantSpan:   codes.Ok,
+		},
+		{
+			name:       "client error response with nil handler error",
+			path:       "/bad",
+			handler:    func(c *gofiber.Ctx) error { return c.SendStatus(gofiber.StatusBadRequest) },
+			wantStatus: gofiber.StatusBadRequest,
+			wantSpan:   codes.Error,
+		},
+		{
+			name:       "handler error",
+			path:       "/failure",
+			handler:    func(*gofiber.Ctx) error { return errors.New("handler failure") },
+			wantStatus: gofiber.StatusInternalServerError,
+			wantSpan:   codes.Error,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			spans := tracetest.NewSpanRecorder()
+			provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
+			defer func() { _ = provider.Shutdown(context.Background()) }()
+
+			app := gofiber.New()
+			app.Use(TraceMiddleware(provider.Tracer("test"), zap.NewNop(), "handler.test"))
+			app.Get(tt.path, tt.handler)
+
+			response, err := app.Test(httptest.NewRequest(http.MethodGet, tt.path, nil), -1)
+			if err != nil {
+				t.Fatalf("app.Test() error = %v", err)
+			}
+			if response.StatusCode != tt.wantStatus {
+				t.Fatalf("HTTP status = %d, want %d", response.StatusCode, tt.wantStatus)
+			}
+
+			ended := spans.Ended()
+			if len(ended) != 1 {
+				t.Fatalf("ended spans = %d, want 1", len(ended))
+			}
+			if status := ended[0].Status().Code; status != tt.wantSpan {
+				t.Fatalf("span status = %s, want %s", status, tt.wantSpan)
+			}
+			if !hasIntAttribute(ended[0].Attributes(), "http.response.status_code", tt.wantStatus) {
+				t.Fatalf("span attributes missing http.response.status_code=%d: %#v", tt.wantStatus, ended[0].Attributes())
+			}
+		})
+	}
+}
+
+func hasIntAttribute(attrs []attribute.KeyValue, key string, value int) bool {
+	for _, attr := range attrs {
+		if string(attr.Key) == key && attr.Value.AsInt64() == int64(value) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestRequestMetricsMiddleware(t *testing.T) {
