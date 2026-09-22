@@ -2,6 +2,14 @@
 
 Краткий changelog для `service-kit-go`.
 
+## 0.6.0
+
+- `logging.Config` поддерживает `Format` (`json`/`console`) и `Color`
+  (`auto`/`always`/`never`).
+- Development по умолчанию использует console-вывод, а остальные окружения —
+  JSON; OpenSearch exporter остаётся JSON независимо от stdout-формата.
+- Console-режим раскрашивает уровни и детерминированно выделяет `trace_id`.
+
 ## 0.5.0
 
 - Добавлено явное `postgres.enabled=false` для stateless applications. Без него обязательная проверка PostgreSQL сохранена.

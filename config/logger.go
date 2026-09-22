@@ -23,6 +23,8 @@ type ServiceLoggerOpenSearchConfig struct {
 
 type ServiceLoggerConfig struct {
 	Level      string                        `mapstructure:"level"`
+	Format     string                        `mapstructure:"format"`
+	Color      string                        `mapstructure:"color"`
 	OpenSearch ServiceLoggerOpenSearchConfig `mapstructure:"opensearch"`
 }
 

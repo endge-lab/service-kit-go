@@ -52,9 +52,31 @@ func TraceMiddleware(tracer trace.Tracer, logger *zap.Logger, name string, attrs
 		c.SetUserContext(ctx)
 
 		err := c.Next()
-		step.End(err)
+		statusCode := traceResponseStatus(err, c.Response().StatusCode())
+		step.SetAttributes(attribute.Int("http.response.status_code", statusCode))
+		step.End(traceCompletionError(err, statusCode))
 		return err
 	}
+}
+
+func traceResponseStatus(nextErr error, statusCode int) int {
+	if nextErr != nil && statusCode < fiber.StatusBadRequest {
+		return fiber.StatusInternalServerError
+	}
+	return statusCode
+}
+
+// traceCompletionError derives span status from the response without changing
+// Fiber control flow. Handlers commonly write a 4xx response and return nil;
+// that is a successful Fiber flow but an unsuccessful HTTP operation.
+func traceCompletionError(nextErr error, statusCode int) error {
+	if nextErr != nil {
+		return nextErr
+	}
+	if statusCode >= fiber.StatusBadRequest {
+		return fmt.Errorf("http request completed with status %d", statusCode)
+	}
+	return nil
 }
 
 // RequestLoggerMiddleware пишет единый structured request log.

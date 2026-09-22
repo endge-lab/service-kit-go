@@ -51,6 +51,8 @@ func TestLoadServiceConfigEnvOverridesYAML(t *testing.T) {
 	t.Setenv("APP_NAME", "env-service")
 	t.Setenv("REST_PORT", "9090")
 	t.Setenv("LOGGER_LEVEL", "warn")
+	t.Setenv("LOGGER_FORMAT", "console")
+	t.Setenv("LOGGER_COLOR", "always")
 	t.Setenv("POSTGRES_HOST", "env-postgres")
 	t.Setenv("POSTGRES_DATABASE", "env-db")
 	t.Setenv("TLS_ENABLED", "true")
@@ -70,6 +72,9 @@ func TestLoadServiceConfigEnvOverridesYAML(t *testing.T) {
 	}
 	if cfg.Logger.Level != "warn" {
 		t.Fatalf("Logger.Level = %q, want warn", cfg.Logger.Level)
+	}
+	if cfg.Logger.Format != "console" || cfg.Logger.Color != "always" {
+		t.Fatalf("Logger output config = format=%q color=%q, want console/always", cfg.Logger.Format, cfg.Logger.Color)
 	}
 	if cfg.Postgres.Host != "env-postgres" {
 		t.Fatalf("Postgres.Host = %q, want env-postgres", cfg.Postgres.Host)
@@ -661,6 +666,8 @@ func clearConfigEnv(t *testing.T) {
 		"HTTP_PORT",
 		"CORS_ALLOWED_ORIGINS",
 		"LOGGER_LEVEL",
+		"LOGGER_FORMAT",
+		"LOGGER_COLOR",
 		"LOGGER_OPENSEARCH_ENABLED",
 		"LOGGER_OPENSEARCH_ENDPOINT",
 		"LOGGER_OPENSEARCH_INDEX",

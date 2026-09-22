@@ -29,9 +29,12 @@ import (
 
 // Config описывает общие OTEL-настройки runtime.
 type Config struct {
-	ServiceName       string
-	ServiceVersion    string
-	Environment       string
+	ServiceName    string
+	ServiceVersion string
+	Environment    string
+	// OTLPEnabled distinguishes an intentionally disabled OTLP pipeline from
+	// a configuration mistake where OTLP was enabled without an endpoint.
+	OTLPEnabled       bool
 	OTLPEndpoint      string
 	OTLPInsecure      bool
 	MetricsInterval   time.Duration
@@ -172,7 +175,7 @@ func newTraceProvider(ctx context.Context, cfg Config, res *resource.Resource, l
 
 	endpoint := strings.TrimSpace(cfg.OTLPEndpoint)
 	if endpoint == "" {
-		if logger != nil {
+		if cfg.OTLPEnabled && logger != nil {
 			logger.Warn("trace exporter disabled: endpoint is empty")
 		}
 		return sdktrace.NewTracerProvider(
@@ -217,7 +220,7 @@ func newMeterProvider(ctx context.Context, cfg Config, res *resource.Resource, l
 
 	endpoint := strings.TrimSpace(cfg.OTLPEndpoint)
 	if endpoint == "" {
-		if logger != nil {
+		if cfg.OTLPEnabled && logger != nil {
 			logger.Warn("metric exporter disabled: endpoint is empty")
 		}
 		return sdkmetric.NewMeterProvider(

@@ -4,13 +4,17 @@ import "github.com/spf13/viper"
 
 func setServiceDefaults(v *viper.Viper, appEnv string) {
 	setDefaults(v, map[string]any{
-		"app.env":                                      appEnv,
-		"app.name":                                     "",
-		"app.version":                                  "dev",
-		"app.public_url":                               "",
-		"http.port":                                    "8080",
-		"http.cors_allowed_origins":                    "",
-		"logger.level":                                 "debug",
+		"app.env":                   appEnv,
+		"app.name":                  "",
+		"app.version":               "dev",
+		"app.public_url":            "",
+		"http.port":                 "8080",
+		"http.cors_allowed_origins": "",
+		"logger.level":              "debug",
+		// Empty values let logging.Config derive safe defaults from app.env:
+		// console/auto for development and json/never everywhere else.
+		"logger.format":                                "",
+		"logger.color":                                 "",
 		"logger.opensearch.enabled":                    false,
 		"logger.opensearch.endpoint":                   "",
 		"logger.opensearch.index":                      "service-logs",

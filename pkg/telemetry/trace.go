@@ -28,9 +28,6 @@ func StartTrace(ctx context.Context, tracer trace.Tracer, logger *zap.Logger, na
 
 	ctx, span := tracer.Start(ctx, name, trace.WithAttributes(attrs...))
 	logger = logging.WithContext(ctx, logger)
-	if logger != nil {
-		logger.Debug("span started", zap.String("span", name))
-	}
 
 	return ctx, &Step{
 		span:   span,
@@ -46,8 +43,10 @@ func (s *Step) End(err error) {
 	}
 	defer s.span.End()
 
+	// StartTrace already enriches logger with the active trace context. Do not
+	// add trace fields again here: zap would emit duplicate trace_id/span_id
+	// keys in the same log entry.
 	fields := []zap.Field{zap.String("span", s.name)}
-	fields = append(fields, logging.TraceFieldsFromSpan(s.span)...)
 
 	if err != nil {
 		s.span.RecordError(err)
@@ -66,9 +65,6 @@ func (s *Step) End(err error) {
 	}
 
 	s.span.SetStatus(codes.Ok, "success")
-	if s.logger != nil {
-		s.logger.Debug("span succeeded", fields...)
-	}
 }
 
 // Fail отмечает span ошибкой, но не завершает его.
@@ -84,6 +80,15 @@ func (s *Step) Fail(err error) {
 	}
 }
 
+// SetAttributes добавляет атрибуты к текущему span.
+func (s *Step) SetAttributes(attrs ...attribute.KeyValue) {
+	if s == nil || s.span == nil || len(attrs) == 0 {
+		return
+	}
+
+	s.span.SetAttributes(attrs...)
+}
+
 // Event добавляет событие внутрь текущего span.
 func (s *Step) Event(name string, attrs ...attribute.KeyValue) {
 	if s == nil || s.span == nil {
@@ -91,12 +96,4 @@ func (s *Step) Event(name string, attrs ...attribute.KeyValue) {
 	}
 
 	s.span.AddEvent(name, trace.WithAttributes(attrs...))
-	if s.logger != nil {
-		fields := []zap.Field{
-			zap.String("span", s.name),
-			zap.String("event", name),
-		}
-		fields = append(fields, logging.TraceFieldsFromSpan(s.span)...)
-		s.logger.Debug("span event", fields...)
-	}
 }
